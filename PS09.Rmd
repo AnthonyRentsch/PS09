@@ -1,6 +1,6 @@
 ---
 title: "STAT/MATH 495: Problem Set 09"
-author: "WRITE YOUR NAME(S) HERE"
+author: "Anthony Rentsch"
 date: "2017-11-07"
 output:
   html_document:
@@ -19,24 +19,21 @@ knitr::opts_chunk$set(
 set.seed(76)
 
 library(tidyverse)
+library(grid)
+library(gridExtra)
+library(proxy)
 ```
-
-
-
-# Collaboration
-
-Please indicate who you collaborated with on this assignment: 
 
 
 
 # Question 1: Run k-means
 
-```{r}
+```{r, warning=FALSE}
 observations_1 <- read_csv("data/observations_1.csv")
 observations_2 <- read_csv("data/observations_2.csv")
 
 # Set observations to be one of two datasets
-observations <- observations_2
+observations <- observations_1
 
 # Fit model for k=2
 k <- 2
@@ -55,7 +52,16 @@ cluster_centers <- cluster_centers %>%
 
 ggplot(NULL, aes(x=x1, y=x2, col=cluster)) +
   geom_point(data=observations) +
-  geom_point(data=cluster_centers, size=5)
+  geom_point(data=cluster_centers, size=5) + 
+  labs(title = "Result of KMC for observations_1")
+```
+
+```{r, echo = FALSE}
+ggplot(data = observations_2) + geom_point(aes(x1,x2)) + labs(title = "Scatterplot of observations_2")
+```
+
+```{r, echo = FALSE}
+ggplot(data = observations_1) + geom_point(aes(x1,x2)) + labs(title = "Scatterplot of observations_1")
 ```
 
 **Questions**:
@@ -71,10 +77,10 @@ results.
 
 **Answers**:
 
-1.
-1.
-1.
-1.
+1. The results were extremely consistent. In every run, the clusters emerged in the group of points centered at the bottom left (low x1 and x2 values) and in the group of points centered at the top right (high x1 and x2 values). The clusters even ended up in roughly the same position from instance to instance (around (0.5, 0.5) and (1.5, 1.5)). Even the two points that are close to being equidistant from either cluster (roughly x1 = x2 = 1) ended up in the cluster that they were slightly closer to each time. 
+1. I suspect that the clustering algorithm produced nearly identical results each time because the observations that the model was trained on were "pre-clustered," if you will. In other words, `observations_2` were already roughly grouped into two distinct clouds of points, which allowed for the KMC (k=2) algorithm to cluster the points in a way that was already natural to the data. This can be seen in the scatterplot above.
+1. The results of running the KMC on `observations_1` were much less consistent. For instance, in three separate runs the left-most cluster was centered at, roughly, (0.6, 0.8) then (0.95, 0.5) and then (0.7, 0.7). Since the centers changed dramatically from instance to instance, individual data points got grouped differently nearly every time.  
+1. Unlike `observations_2`, the `observations_1` data is not "pre-clustered." Looking at the scatterplot above, there is no discernible pattern in the data and much less of a discernible clustering pattern. Since there is no natrual pattern in the data for the KMC algorithm to fit, it fits to noise each time, which produces unpredictable and inconsistent results. 
 
 
 
@@ -85,17 +91,53 @@ Don't worry about doing it for general $k$; keep it simple and do it for $k=2$
 specifically. Apply it to `observations_2` from above.
 
 ```{r}
-# Hint:
-library(proxy)
-A <- data_frame(
-  x1 = c(0, 0.5, 0.75, 1),
-  x2 = c(0, 0.5, 0.75, 1)
-)
-B <- data_frame(
+# Initialize (random) cluster assignments
+clusters <- data.frame(x1 = observations_2$x1,
+                       x2 = observations_2$x2,
+                       old_cluster = sample(c(1,2), 100, replace = T))
+
+# Initialize centers
+centers <- data_frame(
   x1 = c(1, 0),
   x2 = c(1, 0)
 )
-distance_matrix <- proxy::dist(x=A, y=B)
-distance_matrix
-apply(distance_matrix, 1, which.min)
+
+# Do initial computations for
+# distance between each point and center
+distance_matrix <- proxy::dist(x = data.frame(clusters$x1, clusters$x2), y = centers)
+
+# which cluster each point is assigned to
+clusters <- cbind(clusters, new_cluster = apply(distance_matrix, 1, which.min))
+
+# how many point were assigned to a new cluster
+changes <- nrow(clusters[clusters$old_cluster != clusters$new_cluster,])
+
+while(changes != 0){
+  # recompute centers
+  centers <- data_frame(
+  x1 = c(mean(clusters$x1[clusters$new_cluster == 1]), mean(clusters$x1[clusters$new_cluster == 2])),
+  x2 = c(mean(clusters$x1[clusters$new_cluster == 1]), mean(clusters$x2[clusters$new_cluster == 2]))
+  )
+  # reassign new_cluster values to old_cluster
+  clusters$old_cluster <- clusters$new_cluster
+  
+  # compute distance between points and new centers
+  distance_matrix <- proxy::dist(x = data.frame(clusters$x1, clusters$x2), y = centers)
+  
+  # calculate which center each point is now closer to
+  clusters$new_cluster <- apply(distance_matrix, 1, which.min)
+  
+  # calculate how many points were assigned to a different cluster
+  # once this = 0, the loop will terminate
+  changes <- nrow(clusters[clusters$old_cluster != clusters$new_cluster,])
+}
+```
+
+Visually, this algorithm does exactly what it is supposed to and replicates the results of the KMC algorithm when it was run on `observations_2`.
+```{r, echo = FALSE}
+ggplot(NULL) +
+  geom_point(data = clusters, aes(x1, x2, col = new_cluster)) +
+  geom_point(data = centers, aes(x1, x2, col = c(1,2)), size = 5) + 
+  labs(title = "Results of my clustering algorithm") +
+  guides(col = FALSE)
 ```
